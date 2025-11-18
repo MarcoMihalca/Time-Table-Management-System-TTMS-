@@ -3,6 +3,7 @@ import random
 MECANICI = ["Mecanic A", "Mecanic B", "Mecanic C"]
 ELEVATOARE = ["Elevator 1", "Elevator 2"]
 
+# 2 sloturi = 1 ora
 LUCRARI = [
     {"nume": "Schimb Ulei",   "durata": 2}, 
     {"nume": "Distribuție",   "durata": 4},
@@ -10,7 +11,7 @@ LUCRARI = [
     {"nume": "Plăcuțe Frână", "durata": 3}
 ]
 
-MAX_TIMP = 16
+MAX_TIMP = 16  # 8 ore de lucru * 2 = 16 sloturi
 
 def creeaza_orar_random():
     orar = []
@@ -43,6 +44,8 @@ for i in range(3):
     orar_generat = creeaza_orar_random()
     
     for p in orar_generat:
+        # Facem conversie de la sloturi la ore reale
+        # Slot 0 = 8:00
         ora_reala_start = 8 + (p['start'] / 2)
         ora_reala_final = 8 + (p['final'] / 2)
         
