@@ -1,0 +1,4 @@
+Aici imi puneti interogarile de baza de date
+adica 
+ex: functiax(parametru1, parametru2,....) -> imi citeste/adauga/sterge x 	
+						din/in baza de date
