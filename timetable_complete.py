@@ -2,6 +2,8 @@ import random
 import time
 import sys
 from datetime import datetime
+import copy
+
 
 listaLucrari = [
     {"id": 0, "nume": "Schimb Ulei",        "durata": 1},
@@ -33,9 +35,9 @@ timpMaxim = 40
 orePeZi = 8
 
 # Parametrii algoritm genetic
-MARIME_POPULATIE = 100
-NUMAR_GENERATII = 5000
-SANSA_MUTATIE = 0.2
+MARIME_POPULATIE = 200
+NUMAR_GENERATII = 1001
+SANSA_MUTATIE = 0.1
 
 #ia o lucrare din lista si ii aloca elevator, mecanic, si start random + calculaza Tfinal
 def gena(idLucrare):
@@ -57,10 +59,8 @@ def cromozom():
     return orar
 
 def calculeaza_fitness(orar):
-    penalizareConflict = 0
-    penalizareIneficienta = 0
-    bonus_eficienta = 0
-    bonus_compactitate = 0
+    penalizare = 0
+    bonus = 0
     
     #verifica confliect intre mecanici sau elevatoare, nu se poate lucra la 2 masini simultan 
     for i in range(len(orar)):
@@ -68,9 +68,9 @@ def calculeaza_fitness(orar):
             l1, l2 = orar[i], orar[j]
             if (l1[3] < l2[4]) and (l2[3] < l1[4]):
                 if l1[1] == l2[1]: 
-                    penalizareConflict += 100
+                    penalizare += 100
                 if l1[2] == l2[2]: 
-                    penalizareConflict += 100
+                    penalizare += 100
 
     
     program_mecanici = {0: [], 1: [], 2: []} # dictionar pentru mecanici
@@ -96,24 +96,24 @@ def calculeaza_fitness(orar):
         
         # ]penalizare pentru timp pierdut start tarziu
         if primulStart > 0:
-            penalizareIneficienta += primulStart * 5
+            penalizare += primulStart * 5
             
         # Bonus start devreme
         if primulStart == 0:
-            bonus_eficienta += 50
+            bonus += 50
            
         # penalizare timp mort 
         for k in range(len(lucrari) - 1):
             gap = lucrari[k+1][3] - lucrari[k][4] #calculez timpi morti start lucrare k+1 - final lucrare k
             if gap > 0:
-                penalizareIneficienta += gap * 5
+                penalizare += gap * 5
         
         # Bonus compactitate
-        timp_ocupat_efectiv = sum(l[4] - l[3] for l in lucrari)
-        interval_total = ultimulFinal - primulStart
-        if interval_total > 0:
-            densitate = timp_ocupat_efectiv / interval_total
-            bonus_compactitate += densitate * 100
+        totalTimpOcupat = sum(l[4] - l[3] for l in lucrari)
+        intervalTotal = ultimulFinal - primulStart
+        if intervalTotal > 0:
+            densitate = totalTimpOcupat / intervalTotal
+            bonus += densitate * 100
 
         # Penalizare ore pierdute sfarsit zi
         zilePlanificate = timpMaxim // orePeZi
@@ -121,15 +121,14 @@ def calculeaza_fitness(orar):
         ora_finala_in_zi = ultimulFinal % orePeZi
         zile_economisite = zilePlanificate - ultimaZiMecanic
         if zile_economisite > 0:
-            bonus_eficienta += zile_economisite * 100
+            bonus += zile_economisite * 100
         # Bonus extra dacă s-a terminat exact la finalul ultimei zile
         if ora_finala_in_zi == 0:
-            bonus_eficienta += 30
+            bonus += 30
         
 
     # 3. ANALIZA ELEVATOARE
     program_elevatoare = {0: [], 1: [], 2: []}
-    
     for gena in orar:
         id_elevator = gena[1]
         program_elevatoare[id_elevator].append(gena)
@@ -143,84 +142,54 @@ def calculeaza_fitness(orar):
         for k in range(len(lucrari) - 1):
             gap = lucrari[k+1][3] - lucrari[k][4]
             if gap > 0:
-                penalizareIneficienta += gap * 2
+                penalizare += gap * 2
         
-        bonus_eficienta += len(lucrari) * 10
+        bonus += len(lucrari) * 10
 
     # 4. METRICI GLOBALE
     if orar:
-        bonus_eficienta += total_lucrari_efectuate * 30
+        bonus += total_lucrari_efectuate * 30
         timp_finalizare_totala = max(gena[4] for gena in orar)
         ultima_zi_global = timp_finalizare_totala // 8
         
         zile_economisate_global = 4 - ultima_zi_global
         if zile_economisate_global > 0:
-            bonus_eficienta += zile_economisate_global * 300
+            bonus += zile_economisate_global * 300
         
         ore_economisate_in_ultima_zi = ((ultima_zi_global + 1) * 8) - timp_finalizare_totala
         if ore_economisate_in_ultima_zi > 0:
-            bonus_eficienta += ore_economisate_in_ultima_zi * 20
+            bonus += ore_economisate_in_ultima_zi * 20
         
         if mecanic_activi == 3:
-            bonus_eficienta += 100
-
-    # 5. CALCUL FINAL
-    total_penalizare = penalizareConflict + penalizareIneficienta
-    total_bonus = bonus_eficienta + bonus_compactitate
+            bonus += 100
     
-    if total_penalizare == 0:
-        scor_brut = 2000 + total_bonus
+    if penalizare == 0:
+        scor_brut = 2000 + bonus
     else:
-        scor_brut = (1000 + total_bonus) / (1 + total_penalizare * 0.005)
-    
-    scor_normalizat = min(100, max(1, (scor_brut / 40)))
-    
-    return scor_normalizat
+        scor_brut = (1000 + bonus) / (1 + penalizare * 0.005)
 
-def selectie_turneu(populatie):
-    candidati = random.sample(populatie, 6)
-    cel_mai_bun = max(candidati, key=calculeaza_fitness)
-    return cel_mai_bun
+    max_possible_score = 3000
+    fitness = max(0, min(100, (scor_brut / max_possible_score) * 100))
+    return fitness
 
-def recombinare(parinte1, parinte2):
-    punct_taiere = random.randint(1, nrLucrari - 1)
-    copil = parinte1[:punct_taiere] + parinte2[punct_taiere:]
+def selectie_turneu(populatie, fitness_cache):
+    a, b = random.sample(populatie, 2)
+    return a if fitness_cache[id(a)] > fitness_cache[id(b)] else b
+
+def recombinare(p1, p2):
+    k = random.randint(1, nrLucrari - 1)
+    copil = copy.deepcopy(p1[:k] + p2[k:])
     return copil
 
 def mutatie(orar):
-    orar_nou = list(orar)
-    for i in range(len(orar_nou)):
+    orarNou = list(orar)
+    for i in range(len(orarNou)):
         sansa = random.random()
         
         if sansa < SANSA_MUTATIE:
-            idLucrare = orar_nou[i][0]
-            orar_nou[i] = gena(idLucrare)
-    return orar_nou
-
-def ruleaza_algoritm_genetic(silent=False):
-    populatie = [cromozom() for i in range(MARIME_POPULATIE)]
-
-    if not silent:
-        print("Start Evolutie: ", NUMAR_GENERATII, "generatii...")
-
-    for generatie in range(NUMAR_GENERATII):
-        populatie.sort(key=lambda x: calculeaza_fitness(x), reverse=True)
-        
-        nr_elite = 2
-        noua_generatie = populatie[:nr_elite]
-
-        while len(noua_generatie) < MARIME_POPULATIE:
-            tata = selectie_turneu(populatie)
-            mama = selectie_turneu(populatie)
-            
-            copil = recombinare(tata, mama)
-            copil = mutatie(copil)
-            
-            noua_generatie.append(copil)
-
-        populatie = noua_generatie
-
-    return populatie[0]
+            idLucrare = orarNou[i][0]
+            orarNou[i] = gena(idLucrare)
+    return orarNou
 
 def get_zi_index(slot):
     return slot // 8
@@ -270,7 +239,8 @@ def afiseaza_orar(orar, fitness):
 
 def ruleaza_cu_benchmark():
     print(f"\n=== BENCHMARK GA ({NUMAR_GENERATII:,} generatii, {MARIME_POPULATIE} populatie) ===\n")
-    
+   
+
     start_time = time.time()
     best_fitness_per_gen = []
     conflicts_per_gen = []
@@ -278,11 +248,11 @@ def ruleaza_cu_benchmark():
     populatie = [cromozom() for _ in range(MARIME_POPULATIE)]
     
     for gen in range(NUMAR_GENERATII):
-        populatie.sort(key=lambda x: calculeaza_fitness(x), reverse=True)
-        
-        best_f = calculeaza_fitness(populatie[0])
+        fitnessCalc = {id(ind): calculeaza_fitness(ind) for ind in populatie}
+        populatie.sort(key=lambda x: fitnessCalc[id(x)], reverse=True)
+        best_f = fitnessCalc[id(populatie[0])]
         best_fitness_per_gen.append(best_f)
-        
+
         # Numara conflictele
         best_ind = populatie[0]
         conflicts = 0
@@ -295,17 +265,17 @@ def ruleaza_cu_benchmark():
         conflicts_per_gen.append(conflicts)
         
         # Evolutie
-        nr_elite = 2
-        noua_generatie = populatie[:nr_elite]
+        nrElit = 4
+        nouaGen = populatie[:nrElit]
         
-        while len(noua_generatie) < MARIME_POPULATIE:
-            tata = selectie_turneu(populatie)
-            mama = selectie_turneu(populatie)
+        while len(nouaGen) < MARIME_POPULATIE:
+            tata = selectie_turneu(populatie, fitnessCalc)
+            mama = selectie_turneu(populatie, fitnessCalc)
             copil = recombinare(tata, mama)
             copil = mutatie(copil)
-            noua_generatie.append(copil)
+            nouaGen.append(copil)
         
-        populatie = noua_generatie
+        populatie = nouaGen
         
         # Progress update
         step = max(1, NUMAR_GENERATII // 10)
@@ -313,7 +283,7 @@ def ruleaza_cu_benchmark():
             print(f"  Gen {gen+1:5d}/{NUMAR_GENERATII}: Fitness={best_f:6.2f}, Conflicts={conflicts}")
     
     best_orar = populatie[0]
-    best_fitness = calculeaza_fitness(best_orar)
+    best_fitness = fitnessCalc[id(populatie[0])]
     
     end_time = time.time()
     durata = end_time - start_time
